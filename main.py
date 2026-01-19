@@ -4,17 +4,16 @@ import aiohttp
 from flask import Flask
 from threading import Thread
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # --- Configuration ---
 API_TOKEN = '8301892332:AAH09vbWAGhBLYSr7vf1fhxNec7H29AxHVc'
-ADMIN_ID = 6973940391
 CHANNELS = ['@GAJARBOTOLZ', '@gajarbotolxchat', '@tech_chatx', '@tech_master_a2z']
 AI_API_URL = "https://tobi-wormgpt-trial.vercel.app/ask?q="
 
-# --- Web Server for Render ---
+# --- Web Server for Render (Keep Alive) ---
 app = Flask('')
 
 @app.route('/')
@@ -65,23 +64,23 @@ def get_join_keyboard():
 async def start_cmd(message: types.Message):
     if await is_subscribed(message.from_user.id):
         kb = InlineKeyboardBuilder()
-        kb.add(InlineKeyboardButton(text="👨‍💻 Developer", callback_data="dev_info"))
+        kb.row(InlineKeyboardButton(text="👨‍💻 Developer", callback_data="dev_info"))
         await message.answer(START_TEXT, reply_markup=kb.as_markup())
     else:
         await message.answer("❌ You must join our channels to use this bot!", reply_markup=get_join_keyboard())
 
 @dp.callback_query(lambda c: c.data == "check_sub")
-async def check_subscription(callback: types.Callback_query):
+async def check_subscription(callback: CallbackQuery):
     if await is_subscribed(callback.from_user.id):
         await callback.message.delete()
         kb = InlineKeyboardBuilder()
-        kb.add(InlineKeyboardButton(text="👨‍💻 Developer", callback_data="dev_info"))
+        kb.row(InlineKeyboardButton(text="👨‍💻 Developer", callback_data="dev_info"))
         await callback.message.answer(f"✅ Access Granted!\n\n{START_TEXT}", reply_markup=kb.as_markup())
     else:
         await callback.answer("⚠️ You haven't joined all channels yet!", show_alert=True)
 
 @dp.callback_query(lambda c: c.data == "dev_info")
-async def dev_info(callback: types.Callback_query):
+async def dev_info(callback: CallbackQuery):
     await callback.answer("Developer: Tech Master\nTeam: Gajarbotol", show_alert=True)
 
 @dp.message()
@@ -102,7 +101,7 @@ async def chat_with_ai(message: types.Message):
             await message.reply("⚠️ AI Server Error!")
 
 async def main():
-    keep_alive() # Start the web server
+    keep_alive() # Render keep-alive server start
     print("Bot is starting...")
     await dp.start_polling(bot)
 
