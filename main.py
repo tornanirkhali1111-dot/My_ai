@@ -2,12 +2,11 @@ import asyncio
 import aiohttp
 import json
 import uuid
-import re
 from flask import Flask
 from threading import Thread
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -18,160 +17,185 @@ CHANNELS = ['@GAJARBOTOLZ', '@gajarbotolxchat', '@tech_chatx', '@tech_master_a2z
 OWNER_ID = 6973940391
 ADMIN_IDS = {6973940391}
 USER_SESSIONS = {}
+ALL_USERS = set() # Broadcast er jonno users list
 
-APIS = {
-    "Gemini Lite": "https://gem.bbinl.site/api/gem",
-    
+# --- AI ENDPOINT ---
+GEMINI_API = "https://gem.bbinl.site/api/gem"
 
-# --- WEB SERVER (RENDER KEEP-ALIVE) ---
+# --- WEB SERVER ---
 app = Flask('')
 @app.route('/')
-def home(): return "Professional Gajarbotol AI is Running!"
+def home(): return "Elite Bot Active"
 def run_web(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): Thread(target=run_web).start()
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-WELCOME_MSG = (
-    "Team Gajarbotol | 🇧🇩\n"
-    "Cyber Security Enthusiasts\n"
-    "--------------------------\n"
-    "Searching for bugs... 🔍\n"
-    "Protecting Bangladesh... 🛡️\n"
-    "Mission: 100% Secured.\n"
-    "ᴅᴇᴠᴏʟᴏᴘᴇʀ ᴛᴇᴄʜ ᴍᴀsᴛᴇʀ"
+class AdminStates(StatesGroup):
+    waiting_for_id = State()
+
+# --- DESIGN ELEMENTS ---
+WELCOME_TEXT = (
+    "💠 **𝐆𝐀𝐉𝐀𝐑𝐁𝐎𝐓𝐎𝐋 𝐈𝐍𝐓𝐄𝐋𝐋𝐈𝐆𝐄𝐍𝐂𝐄** 💠\n"
+    "━━━━━━━━━━━━━━━━━━\n"
+    "🕵️‍♂️ **Status:** System Online\n"
+    "🛡️ **Security:** Encrypted\n"
+    "🚀 **Core:** Gemini Lite Engine\n"
+    "━━━━━━━━━━━━━━━━━━\n"
+    "Welcome to the most advanced AI interface.\n\n"
+    "ᴅᴇᴠᴏʟᴏᴘᴇʀ: **ᴛᴇᴄʜ ᴍᴀsᴛᴇʀ**"
 )
 
-# --- SMART PARSER (To handle JSON/Errors) ---
-def clean_response(raw_text):
-    try:
-        data = json.loads(raw_text)
-        # জেমিনি লাইট বা অন্যান্য এপিআই এর সব ধরণের সম্ভাবনা চেক করা
-        possible_keys = ['text', 'content', 'response', 'result', 'msg', 'message']
-        for key in possible_keys:
-            if key in data:
-                return str(data[key])
-        if 'error' in data:
-            return "⚠️ Server is under heavy load or quota exceeded."
-        return raw_text
-    except:
-        # যদি সরাসরি টেক্সট হয়
-        return raw_text
-
-# --- CORE LOGIC ---
-async def is_user_allowed(user_id):
+# --- SMART SUBSCRIPTION CHECK ---
+async def check_membership(user_id):
     if user_id in ADMIN_IDS: return True
     for ch in CHANNELS:
         try:
-            m = await bot.get_chat_member(chat_id=ch, user_id=user_id)
-            if m.status not in ['left', 'kicked']: return True
-        except: continue
-    return False
+            m = await bot.get_chat_member(ch, user_id)
+            if m.status in ['left', 'kicked']: return False
+        except: return False
+    return True
 
 # --- KEYBOARDS ---
-def get_subs_kb():
-    b = InlineKeyboardBuilder()
-    for ch in CHANNELS:
-        b.row(InlineKeyboardButton(text=f"Join {ch}", url=f"https://t.me/{ch.replace('@','') }"))
-    b.row(InlineKeyboardButton(text="🔄 Verify Subscription", callback_data="check_sub"))
-    return b.as_markup()
+def get_main_kb(user_id):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="👤 My Profile", callback_data="my_profile"))
+    builder.add(InlineKeyboardButton(text="👨‍💻 Dev Info", callback_data="dev_info"))
+    if user_id == OWNER_ID:
+        builder.row(InlineKeyboardButton(text="⚙️ Admin Panel", callback_data="admin_panel"))
+    return builder.as_markup()
 
-def get_menu(uid):
-    b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(text="👤 Dev Info", callback_data="dev_info"))
-    if uid == OWNER_ID:
-        b.row(InlineKeyboardButton(text="➕ Add Admin", callback_data="start_add_admin"))
-    return b.as_markup()
+def get_subs_kb():
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="📢 Join Channel", url="https://t.me/GAJARBOTOLZ"))
+    builder.row(InlineKeyboardButton(text="💬 Join Group", url="https://t.me/gajarbotolxchat"))
+    builder.row(InlineKeyboardButton(text="✅ Verify Access", callback_data="verify"))
+    return builder.as_markup()
 
 # --- HANDLERS ---
 @dp.message(Command("start"))
-async def start(m: types.Message):
-    if await is_user_allowed(m.from_user.id):
-        await m.answer(WELCOME_MSG, reply_markup=get_menu(m.from_user.id))
+async def cmd_start(m: types.Message):
+    ALL_USERS.add(m.from_user.id) # User record for broadcast
+    is_joined = await check_membership(m.from_user.id)
+    if is_joined:
+        await m.answer(WELCOME_TEXT, reply_markup=get_main_kb(m.from_user.id), parse_mode="Markdown")
     else:
-        await m.answer(f"{WELCOME_MSG}\n\n⚠️ **Please join our channels to unlock the AI models.**", reply_markup=get_subs_kb())
+        await m.answer(
+            "⚠️ **ACCESS RESTRICTED**\n\nTo access the Gajarbotol Intelligence, join our channels.",
+            reply_markup=get_subs_kb(), parse_mode="Markdown"
+        )
 
-@dp.callback_query(F.data == "check_sub")
-async def check(c: CallbackQuery):
-    if await is_user_allowed(c.from_user.id):
-        await c.message.delete()
-        await c.message.answer(f"✅ **Verified!**\n\n{WELCOME_MSG}", reply_markup=get_menu(c.from_user.id))
+# --- BROADCAST FEATURE (NEW) ---
+@dp.message(Command("broadcast"))
+async def cmd_broadcast(message: types.Message, command: CommandObject):
+    if message.from_user.id != OWNER_ID:
+        return
+    
+    if not command.args:
+        return await message.reply("Usage: `/broadcast Hello Team!`")
+
+    text = command.args
+    sent_count = 0
+    await message.answer(f"⏳ **Broadcasting to {len(ALL_USERS)} users...**")
+
+    for user_id in list(ALL_USERS):
+        try:
+            await bot.send_message(user_id, f"📢 **OFFICIAL BROADCAST**\n━━━━━━━━━━━━━━\n\n{text}", parse_mode="Markdown")
+            sent_count += 1
+            await asyncio.sleep(0.05) # Prevent flood
+        except:
+            pass
+
+    await message.answer(f"✅ **Broadcast Done!** Sent to {sent_count} users.")
+
+@dp.callback_query(F.data == "verify")
+async def verify_callback(c: CallbackQuery):
+    if await check_membership(c.from_user.id):
+        await c.message.edit_text("✅ Verification Successful! Initializing...")
+        await asyncio.sleep(1)
+        await c.message.edit_text(WELCOME_TEXT, reply_markup=get_main_kb(c.from_user.id), parse_mode="Markdown")
     else:
-        await c.answer("❌ You haven't joined all channels yet!", show_alert=True)
+        await c.answer("❌ Verification Failed!", show_alert=True)
 
-# --- MULTI-AI ASYNC FETCH ---
-async def fetch_ai(session, name, url, query, sid):
-    try:
-        params = {}
-        if name == "Gemini Lite": params = {'q': query, 'sid': sid}
-        elif name == "Gemini Pro": params = {'prompt': query}
-        elif name == "Chat GPT": params = {'question': query}
-        elif name == "Claude": params = {'q': query, 'chatid': sid}
-        
-        async with session.get(url, params=params, timeout=25) as resp:
-            raw_result = await resp.text()
-            if resp.status == 200:
-                cleaned = clean_response(raw_result)
-                return f"🌟 **{name}:**\n{cleaned}\n"
-            elif resp.status == 429:
-                return f"🌟 **{name}:**\n⚠️ Rate limit exceeded. Try again in a minute.\n"
-            else:
-                return f"🌟 **{name}:**\n⚠️ Server is currently unstable ({resp.status}).\n"
-    except Exception:
-        return f"🌟 **{name}:**\n⚠️ Connection timeout. AI is sleeping.\n"
+@dp.callback_query(F.data == "my_profile")
+async def my_profile(c: CallbackQuery):
+    profile = (
+        "👤 **USER PROFILE**\n"
+        "━━━━━━━━━━━━━━\n"
+        f"🆔 **ID:** `{c.from_user.id}`\n"
+        f"👤 **Name:** {c.from_user.full_name}\n"
+        f"🛡️ **Rank:** {'Owner' if c.from_user.id == OWNER_ID else 'Authorized User'}"
+    )
+    await c.message.answer(profile, parse_mode="Markdown")
+    await c.answer()
 
+# --- AI CHAT ENGINE (GEMINI LITE ONLY) ---
 @dp.message()
-async def chat_handler(m: types.Message):
-    if not await is_user_allowed(m.from_user.id):
-        return await m.answer(f"{WELCOME_MSG}\n\n❌ **Join channels first!**", reply_markup=get_subs_kb())
+async def ai_handler(m: types.Message):
+    if not m.text: return
+    if not await check_membership(m.from_user.id):
+        return await m.answer("❌ Join channels first!", reply_markup=get_subs_kb())
 
-    if m.text:
-        wait_msg = await m.reply("🛰️ **Routing request to 4 AI models... Please wait.**")
-        await bot.send_chat_action(m.chat.id, "typing")
-        
-        uid = str(m.from_user.id)
-        if uid not in USER_SESSIONS: USER_SESSIONS[uid] = str(uuid.uuid4())
-        
+    loading_msg = await m.reply("🛰️ **Analyzing...**")
+    await bot.send_chat_action(m.chat.id, "typing")
+    
+    uid = str(m.from_user.id)
+    if uid not in USER_SESSIONS: USER_SESSIONS[uid] = str(uuid.uuid4())
+    
+    try:
         async with aiohttp.ClientSession() as session:
-            tasks = [fetch_ai(session, name, url, m.text, USER_SESSIONS[uid]) for name, url in APIS.items()]
-            results = await asyncio.gather(*tasks)
-            
-            final_report = "🛡️ **Gajarbotol Multi-AI Analysis** 🛡️\n\n" + "\n".join(results)
-            
-            if len(final_report) > 4096:
-                await wait_msg.delete()
-                for i in range(0, len(final_report), 4096):
-                    await m.answer(final_report[i:i+4096])
-            else:
-                await wait_msg.edit_text(final_report)
+            params = {'q': m.text, 'sid': USER_SESSIONS[uid]}
+            async with session.get(GEMINI_API, params=params, timeout=20) as resp:
+                if resp.status == 200:
+                    raw_data = await resp.text()
+                    try:
+                        data = json.loads(raw_data)
+                        reply = data.get("text") or data.get("content") or raw_data
+                    except:
+                        reply = raw_data
+                    
+                    await loading_msg.edit_text(f"🤖 **AI Response:**\n━━━━━━━━━━━━━━\n{reply}")
+                else:
+                    await loading_msg.edit_text("❌ System Busy.")
+    except:
+        await loading_msg.edit_text("⚠️ Timeout.")
 
-# --- ADMIN SYSTEM ---
-class AdminStates(StatesGroup): waiting_for_id = State()
+# --- ADMIN PANEL ---
+@dp.callback_query(F.data == "admin_panel")
+async def admin_panel(c: CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    kb.row(InlineKeyboardButton(text="➕ Add Admin", callback_data="add_adm"))
+    kb.row(InlineKeyboardButton(text="📊 Broadcast Info", callback_data="stats"))
+    await c.message.answer("🛡️ **CONTROL DASHBOARD**", reply_markup=kb.as_markup())
+    await c.answer()
 
-@dp.callback_query(F.data == "start_add_admin")
-async def add_adm_btn(c: CallbackQuery, state: FSMContext):
-    if c.from_user.id == OWNER_ID:
-        await c.message.answer("⌨️ Send me the numerical User ID:")
-        await state.set_state(AdminStates.waiting_for_id)
+@dp.callback_query(F.data == "add_adm")
+async def add_adm_init(c: CallbackQuery, state: FSMContext):
+    await c.message.answer("⌨️ Send Numerical User ID:")
+    await state.set_state(AdminStates.waiting_for_id)
     await c.answer()
 
 @dp.message(AdminStates.waiting_for_id)
-async def process_adm_id(m: types.Message, state: FSMContext):
+async def add_adm_done(m: types.Message, state: FSMContext):
     if m.text.isdigit():
         ADMIN_IDS.add(int(m.text))
-        await m.reply(f"✅ User `{m.text}` is now an authorized Admin.")
+        await m.reply(f"✅ `{m.text}` is Admin.")
         await state.clear()
-    else: await m.reply("❌ Invalid ID. Send numbers only.")
+    else: await m.reply("❌ Invalid ID.")
+
+@dp.callback_query(F.data == "stats")
+async def stats_info(c: CallbackQuery):
+    await c.message.answer(f"📊 **System Stats**\n\nTotal Users in DB: {len(ALL_USERS)}")
+    await c.answer()
 
 @dp.callback_query(F.data == "dev_info")
-async def dev_info(callback: CallbackQuery):
-    await callback.answer("System Architect: Tech Master\nOrganization: Gajarbotol", show_alert=True)
+async def dev_info(c: CallbackQuery):
+    await c.answer("Developed by Tech Master\nTeam Gajarbotol 🇧🇩", show_alert=True)
 
 async def main():
     keep_alive()
     await bot.delete_webhook(drop_pending_updates=True)
-    print("Gajarbotol Elite AI Started!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
