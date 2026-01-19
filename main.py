@@ -21,10 +21,7 @@ USER_SESSIONS = {}
 
 APIS = {
     "Gemini Lite": "https://gem.bbinl.site/api/gem",
-    "Gemini Pro": "https://api-aiassistant.eternalowner06.workers.dev/",
-    "Chat GPT": "https://api-gpt3-eternal.eternalowner06.workers.dev/",
-    "Claude": "https://claude-blue-theta.vercel.app/api/claude"
-}
+    
 
 # --- WEB SERVER (RENDER KEEP-ALIVE) ---
 app = Flask('')
